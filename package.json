@@ -1,0 +1,42 @@
+{
+  "name": "shack-wasm-interpreter",
+  "version": "0.1.0",
+  "description": "MCP server that compiles and runs WebAssembly modules in an isolated, fuel-bounded sandbox",
+  "license": "Apache-2.0",
+  "author": "Vlad Bordei <bordeivlad@gmail.com>",
+  "type": "module",
+  "bin": {
+    "shack-wasm-interpreter": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "wabt": "^1.0.39"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "jest": "^29.0.0",
+    "@jest/globals": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.0.0"
+  },
+  "jest": {
+    "preset": "ts-jest/presets/default-esm",
+    "testEnvironment": "node",
+    "extensionsToTreatAsEsm": [".ts"],
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
+    },
+    "transform": {
+      "^.+\\.tsx?$": [
+        "ts-jest",
+        {
+          "useESM": true
+        }
+      ]
+    }
+  }
+}
