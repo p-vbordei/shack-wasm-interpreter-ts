@@ -1,19 +1,27 @@
 /**
  * Worker thread entry point for isolated WebAssembly execution.
  *
- * This module is spawned as a dedicated thread so the host can terminate it
- * on wall-clock timeout without any cleanup burden. The standard WebAssembly
- * API has no fuel metering, so the timeout is the only bound against
- * non-terminating modules.
+ * This module is spawned as a dedicated Worker thread by {@link module:wasmRunner}
+ * so the host can terminate it on wall-clock timeout without any cleanup burden.
+ * The standard WebAssembly API has no fuel metering, so the timeout is the
+ * only bound against non-terminating modules.
+ *
+ * Input is received via `workerData` (see {@link WorkerInput}).
+ * Results are posted back via `parentPort` as a {@link WorkerOutput} message.
  */
 import { parentPort, workerData } from "worker_threads";
 
+/** Structured input passed to the worker via `workerData`. */
 interface WorkerInput {
+  /** Raw wasm module bytes as a plain number array (for structured clone compatibility). */
   wasmBytes: number[];
+  /** Name of the exported function to invoke. */
   funcName: string;
+  /** Call arguments (numeric, passed directly to the wasm function). */
   args: number[];
 }
 
+/** Discriminated-union message posted back to the parent thread. */
 type WorkerOutput =
   | { ok: true; results: unknown[] }
   | { ok: false; error: string };

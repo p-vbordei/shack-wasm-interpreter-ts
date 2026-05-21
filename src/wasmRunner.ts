@@ -1,20 +1,25 @@
 /**
  * WebAssembly execution and validation logic.
  *
- * Execution runs in a Worker thread so the main event loop can enforce
- * a wall-clock timeout: when the worker does not respond in time it is
- * terminated. This prevents non-terminating modules from hanging the server.
+ * Execution runs in a Worker thread so the main event loop can enforce a
+ * wall-clock timeout: when the worker does not respond in time it is
+ * terminated, preventing non-terminating modules from hanging the server.
  *
  * WAT text is compiled to binary using the wabt library before instantiation.
  * The standard WebAssembly API has no fuel metering, so the wall-clock timeout
- * is the only bound against non-terminating modules.
+ * ({@link EXEC_TIMEOUT_MS}) is the only bound against non-terminating modules.
+ *
+ * @module wasmRunner
  */
 import { Worker } from "worker_threads";
 import { fileURLToPath } from "url";
 import path from "path";
 import WabtModule from "wabt";
 
+/** Maximum instruction-budget units reported back to the caller (informational only). */
 export const DEFAULT_FUEL_LIMIT = 10_000_000;
+
+/** Wall-clock timeout in milliseconds before a Worker thread is forcibly terminated. */
 export const EXEC_TIMEOUT_MS = 5_000;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,6 +45,14 @@ async function getWabt() {
   return wabtReady;
 }
 
+/**
+ * Decode WebAssembly module bytes from the tool-call arguments.
+ *
+ * Looks for `wasm_base64` (base64-encoded `.wasm` bytes) first, then
+ * `wat` (WebAssembly Text Format source compiled via wabt).
+ *
+ * @throws {Error} when neither key is present or the value is malformed.
+ */
 async function decodeModuleBytes(args: Record<string, unknown>): Promise<Buffer> {
   if (typeof args["wasm_base64"] === "string") {
     try {
@@ -62,6 +75,10 @@ async function decodeModuleBytes(args: Record<string, unknown>): Promise<Buffer>
   throw new Error("Provide either wasm_base64 or wat");
 }
 
+/**
+ * Normalise a `WebAssembly.ModuleExportDescriptor` kind string to one of
+ * `"function"`, `"memory"`, `"table"`, `"global"`, or `"unknown"`.
+ */
 function getExportKind(kind: string): string {
   switch (kind) {
     case "function": return "function";
@@ -72,6 +89,13 @@ function getExportKind(kind: string): string {
   }
 }
 
+/**
+ * Spawn a Worker thread to execute the WebAssembly function in isolation.
+ *
+ * The worker is forcibly terminated if it does not respond within `timeoutMs`
+ * milliseconds.  This is the primary defence against non-terminating modules
+ * because the standard WebAssembly API provides no fuel metering.
+ */
 function runInWorker(
   wasmBytes: Buffer,
   funcName: string,
@@ -109,6 +133,18 @@ function runInWorker(
   });
 }
 
+/**
+ * Instantiate a WebAssembly module and invoke an exported function.
+ *
+ * @param args - Tool-call arguments:
+ *   - `wasm_base64` (string) – base64-encoded `.wasm` bytes
+ *   - `wat` (string) – WebAssembly Text Format source (used when `wasm_base64` is absent)
+ *   - `function` (string, optional) – exported function name; defaults to the first exported function
+ *   - `args` (number[]) – integer call arguments
+ * @returns MCP content object `{ content: [{ type: "text", text: "<json>" }] }` where
+ *   the inner JSON has `function`, `results`, and `fuel_consumed` (always 0 in TypeScript).
+ * @throws {Error} on bad module bytes, missing export, arity mismatch, or execution trap.
+ */
 export async function runWasm(args: Record<string, unknown>): Promise<unknown> {
   const wasmBytes = await decodeModuleBytes(args);
 
@@ -179,6 +215,16 @@ export async function runWasm(args: Record<string, unknown>): Promise<unknown> {
   };
 }
 
+/**
+ * Parse and validate a WebAssembly module without executing it.
+ *
+ * @param args - Tool-call arguments:
+ *   - `wasm_base64` (string) – base64-encoded `.wasm` bytes
+ *   - `wat` (string) – WebAssembly Text Format source
+ * @returns MCP content object where the inner JSON has `valid: true` and an
+ *   `exports` list, each item with `name` and `kind`.
+ * @throws {Error} if the module cannot be parsed or validated.
+ */
 export async function validateWasm(args: Record<string, unknown>): Promise<unknown> {
   const wasmBytes = await decodeModuleBytes(args);
 
